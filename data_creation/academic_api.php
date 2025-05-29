@@ -86,38 +86,22 @@ function createSession($conn) {
     $stmt->bind_param("ii", $next_start, $next_end);
     $stmt->execute();
     $new_sess = $stmt->insert_id ?: $conn->query("
-        SELECT session_id FROM academic_sessions
-        WHERE start_year=$next_start AND end_year=$next_end LIMIT 1
+        SELECT session_id 
+        FROM academic_sessions 
+        WHERE start_year=$next_start AND end_year=$next_end 
+        LIMIT 1
     ")->fetch_assoc()['session_id'];
     $stmt->close();
 
     $sess_name = "{$next_start}/{$next_end}";
 
-    // — fetch legacy version_id —
-    $resv = $conn->query("
-      SELECT version_id FROM cleanup_versions
-      WHERE session_name='legacy' LIMIT 1
-    ");
-    if (!$resv || $resv->num_rows === 0) {
-        throw new Exception("Missing legacy version in cleanup_versions");
-    }
-    $legacyVersion = $resv->fetch_assoc()['version_id'];
+    // *** REMOVE THIS BLOCK ***
+    // $conn->query("
+    //   INSERT INTO level_counts_history( … ) 
+    //   SELECT … FROM levels
+    // ");
 
-    // 3) Archive current levels under legacyVersion
-    $conn->query("
-      INSERT INTO level_counts_history
-        (version_id, session_name, semester_number, `level`, program_id, student_count)
-      SELECT
-        $legacyVersion,
-        '$sess_name',
-        1,
-        l.`level`,
-        l.program_id,
-        l.students_count
-      FROM levels l
-    ");
-
-    // 4) Promote students exactly as before…
+    // 3) Promote students (exactly as before)…
     $conn->query("DROP TEMPORARY TABLE IF EXISTS tmp_counts, max_levels");
     $conn->query("
       CREATE TEMPORARY TABLE tmp_counts AS
@@ -143,7 +127,7 @@ function createSession($conn) {
     ");
     $conn->query("DROP TEMPORARY TABLE tmp_counts, max_levels");
 
-    // 5) Open Semester 1 on new session
+    // 4) Open Semester 1 on new session
     $one = 1;
     $stmt2 = $conn->prepare("
       INSERT INTO semesters(session_id,semester_number,start_date,status)
@@ -157,6 +141,7 @@ function createSession($conn) {
     $conn->commit();
     echo json_encode(['status'=>'success','session_id'=>$new_sess]);
 }
+
 
 function cleanupSemester($conn) {
     if (!$conn->query("CALL ToggleSemester()")) {
